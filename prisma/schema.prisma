@@ -65,6 +65,11 @@ model User {
   sharedExperiences SharedExperience[]
   experienceReactions ExperienceReaction[]
   experienceComments ExperienceComment[] @relation("ExperienceComments")
+  
+  // Admin Relations
+  adminActions     AdminAction[] @relation("AdminActions")
+  moderatedContent ContentModeration[] @relation("ModeratedContent")
+  updatedSettings  SystemSettings[] @relation("UpdatedSettings")
 
   @@map("users")
 }
@@ -138,6 +143,8 @@ enum UserRole {
   TIME_SEEKER
   TIME_GIVER
   BOTH
+  ADMIN
+  MODERATOR
 }
 
 enum SessionType {
@@ -695,4 +702,120 @@ enum ReactionType {
   HOPEFUL
   PROUD
   EMPATHETIC
+}
+
+// Admin System Models
+model AdminAction {
+  id          String        @id @default(cuid())
+  adminId     String
+  actionType  AdminActionType
+  targetId    String?       // ID of the affected user/session/post
+  targetType  String?       // "user", "session", "post", etc.
+  description String
+  metadata    Json?         // additional action data
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime      @default(now())
+
+  // Relations
+  admin       User          @relation("AdminActions", fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@map("admin_actions")
+}
+
+model SystemSettings {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json     // configuration value
+  description String?
+  category    String   // "platform", "payments", "safety", etc.
+  isPublic    Boolean  @default(false) // can be shown to regular users
+  updatedBy   String?  // admin who last updated this setting
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  // Relations
+  updatedByUser User?   @relation("UpdatedSettings", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("system_settings")
+}
+
+model ContentModeration {
+  id          String                @id @default(cuid())
+  contentType  ContentType
+  contentId   String                // ID of the content being moderated
+  status      ModerationStatus      @default(PENDING)
+  reason      String?
+  moderatorId String?
+  adminNotes  String?
+  autoFlagged Boolean               @default(false)
+  flaggedBy   String?               // user who reported the content
+  metadata    Json?                 // moderation metadata
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  // Relations
+  moderator   User?                 @relation("ModeratedContent", fields: [moderatorId], references: [id], onDelete: SetNull)
+
+  @@map("content_moderation")
+}
+
+model SystemLog {
+  id          String       @id @default(cuid())
+  level       LogLevel     @default(INFO)
+  event       String       // "user_signup", "session_created", "payment_failed", etc.
+  message     String
+  userId      String?      // user involved in the event
+  metadata    Json?        // additional log data
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime     @default(now())
+
+  @@map("system_logs")
+}
+
+enum AdminActionType {
+  USER_BAN
+  USER_SUSPEND
+  USER_VERIFICATION
+  SESSION_TERMINATE
+  CONTENT_DELETE
+  CONTENT_APPROVE
+  PAYMENT_REFUND
+  SYSTEM_SETTING_UPDATE
+  CRISIS_INTERVENTION
+  EMERGENCY_CONTACT
+  PLATFORM_ANNOUNCEMENT
+  DATA_EXPORT
+  USER_MERGE
+  BULK_ACTION
+}
+
+enum ContentType {
+  FORUM_POST
+  FORUM_REPLY
+  EXPERIENCE_SHARE
+  EXPERIENCE_COMMENT
+  SUPPORT_GROUP
+  GROUP_SESSION
+  USER_PROFILE
+  SESSION_CHAT
+  RECORDING
+}
+
+enum ModerationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  FLAGGED
+  REMOVED
+  UNDER_REVIEW
+}
+
+enum LogLevel {
+  DEBUG
+  INFO
+  WARN
+  ERROR
+  FATAL
 }
