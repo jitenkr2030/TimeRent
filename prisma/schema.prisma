@@ -53,6 +53,18 @@ model User {
   transactions      Transaction[]
   wallets           Wallet[]
   paymentMethods     PaymentMethod[]
+  emergencyContacts EmergencyContact[]
+  crisisReports     CrisisReport[]
+  sessionRecordings SessionRecording[]
+  forumPosts        ForumPost[]
+  forumReplies      ForumReply[] @relation("ForumReplies")
+  supportGroups     SupportGroupMember[]
+  createdGroups     SupportGroup[] @relation("SupportGroups")
+  groupSessions     GroupSession[] @relation("GroupSessions")
+  groupSessionParticipants GroupSessionParticipant[] @relation("GroupSessionParticipants")
+  sharedExperiences SharedExperience[]
+  experienceReactions ExperienceReaction[]
+  experienceComments ExperienceComment[] @relation("ExperienceComments")
 
   @@map("users")
 }
@@ -82,6 +94,8 @@ model Session {
   giver           User          @relation("GiverSessions", fields: [giverId], references: [id], onDelete: Cascade)
   presenceRatings PresenceRating[]
   transactions     Transaction[]
+  crisisReports   CrisisReport[]
+  sessionRecordings SessionRecording[]
 
   @@map("sessions")
 }
@@ -225,4 +239,460 @@ enum PaymentMethodType {
   UPI
   NET_BANKING
   WALLET
+}
+
+// Emergency Support System Models
+model EmergencyContact {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  relationship String  // family, friend, therapist, etc.
+  phone       String
+  email       String?
+  isPrimary   Boolean  @default(false)
+  priority    Int      @default(1) // 1 = highest priority
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("emergency_contacts")
+}
+
+model CrisisReport {
+  id              String            @id @default(cuid())
+  userId          String
+  sessionId       String?           // if crisis occurred during session
+  severity        CrisisSeverity
+  type            CrisisType
+  description     String
+  status          CrisisStatus      @default(ACTIVE)
+  resolvedAt      DateTime?
+  resolutionNotes String?
+  protocolUsed    String?           // which crisis protocol was activated
+  backupNotified  Boolean           @default(false)
+  emergencyServicesNotified Boolean @default(false)
+  metadata        Json?             // additional crisis data
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  // Relations
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session         Session?          @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@map("crisis_reports")
+}
+
+model ProfessionalBackup {
+  id          String   @id @default(cuid())
+  name        String
+  profession  String   // therapist, counselor, social worker, etc.
+  organization String?
+  phone       String
+  email       String?
+  specialization String? // crisis intervention, mental health, etc.
+  isAvailable Boolean  @default(true)
+  responseTime Int?     // average response time in minutes
+  timezone    String?
+  priority    Int      @default(1) // 1 = highest priority
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("professional_backups")
+}
+
+model CrisisProtocol {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  severity    CrisisSeverity
+  steps       Json     // array of protocol steps
+  resources   Json?    // emergency resources, hotlines, etc.
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("crisis_protocols")
+}
+
+enum CrisisSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum CrisisType {
+  SELF_HARM
+  SUICIDAL_IDEATION
+  PANIC_ATTACK
+  SEVERE_ANXIETY
+  DEPRESSION
+  TRAUMA_TRIGGER
+  SUBSTANCE_CRISIS
+  DOMESTIC_VIOLENCE
+  OTHER
+}
+
+enum CrisisStatus {
+  ACTIVE
+  RESOLVED
+  ESCALATED
+  HANDED_OFF
+}
+
+// Session Recording System Models
+model SessionRecording {
+  id              String            @id @default(cuid())
+  sessionId       String
+  userId          String            // user who initiated the recording
+  recordingType   RecordingType     @default(AUDIO_VIDEO)
+  status          RecordingStatus   @default(PENDING)
+  consent         RecordingConsent  @default(BOTH_CONSENT)
+  encryptionKey   String            // encrypted storage key
+  filePath        String?           // encrypted file path
+  thumbnailPath   String?           // thumbnail path
+  duration        Int?              // duration in seconds
+  fileSize        Int?              // file size in bytes
+  metadata        Json?             // recording metadata
+  accessControl   Json?             // access control settings
+  isDeleted       Boolean           @default(false)
+  deletedAt       DateTime?
+  expiresAt       DateTime?         // auto-deletion timestamp
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  // Relations
+  session         Session           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recordingAccess RecordingAccess[]
+
+  @@map("session_recordings")
+}
+
+model RecordingAccess {
+  id                String   @id @default(cuid())
+  recordingId       String
+  userId            String   // user who has access
+  accessLevel       AccessLevel @default(VIEW)
+  grantedBy         String   // who granted this access
+  grantedAt         DateTime @default(now())
+  expiresAt         DateTime?
+  isActive          Boolean  @default(true)
+  accessLog         Json?    // log of access attempts
+
+  // Relations
+  recording         SessionRecording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+
+  @@map("recording_access")
+}
+
+model RecordingTemplate {
+  id                String   @id @default(cuid())
+  name              String
+  description       String?
+  recordingType     RecordingType @default(AUDIO_VIDEO)
+  defaultConsent    RecordingConsent @default(BOTH_CONSENT)
+  autoDelete        Boolean  @default(true)
+  retentionDays     Int      @default(30)
+  encryptionEnabled Boolean  @default(true)
+  accessSettings    Json?    // default access control settings
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("recording_templates")
+}
+
+enum RecordingType {
+  AUDIO_ONLY
+  VIDEO_ONLY
+  AUDIO_VIDEO
+  SCREEN_SHARE
+  TRANSCRIPT_ONLY
+}
+
+enum RecordingStatus {
+  PENDING
+  RECORDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  EXPIRED
+  DELETED
+}
+
+enum RecordingConsent {
+  SEEKER_ONLY
+  GIVER_ONLY
+  BOTH_CONSENT
+  AUTO_CONSENT
+  NO_CONSENT
+}
+
+enum AccessLevel {
+  VIEW
+  DOWNLOAD
+  SHARE
+  MANAGE
+}
+
+// Community Features Models
+model ForumPost {
+  id                String            @id @default(cuid())
+  title             String
+  content           String
+  category          ForumCategory
+  isAnonymous       Boolean           @default(true)
+  authorId          String
+  isPinned          Boolean           @default(false)
+  isLocked          Boolean           @default(false)
+  replyCount        Int               @default(0)
+  viewCount         Int               @default(0)
+  likeCount         Int               @default(0)
+  tags              String?           // comma-separated tags
+  metadata          Json?             // additional post data
+  isDeleted         Boolean           @default(false)
+  deletedAt         DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  // Relations
+  author            User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  replies           ForumReply[]
+
+  @@map("forum_posts")
+}
+
+model ForumReply {
+  id                String            @id @default(cuid())
+  postId            String
+  authorId          String
+  content           String
+  isAnonymous       Boolean           @default(true)
+  parentReplyId     String?           // for nested replies
+  likeCount         Int               @default(0)
+  isDeleted         Boolean           @default(false)
+  deletedAt         DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  // Relations
+  post              ForumPost         @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author            User              @relation("ForumReplies", fields: [authorId], references: [id], onDelete: Cascade)
+  parentReply       ForumReply?       @relation("ForumReplyReplies", fields: [parentReplyId], references: [id])
+  childReplies      ForumReply[]      @relation("ForumReplyReplies")
+
+  @@map("forum_replies")
+}
+
+model SupportGroup {
+  id                String            @id @default(cuid())
+  name              String
+  description       String
+  category          String            // anxiety, depression, grief, etc.
+  isPrivate         Boolean           @default(false)
+  maxMembers        Int               @default(50)
+  memberCount       Int               @default(0)
+  isActive          Boolean           @default(true)
+  tags              String?           // comma-separated tags
+  rules             Json?             // group rules and guidelines
+  metadata          Json?             // additional group data
+  createdBy         String
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  // Relations
+  creator           User              @relation("SupportGroups", fields: [createdBy], references: [id], onDelete: Cascade)
+  members           SupportGroupMember[]
+  groupSessions     GroupSession[]
+
+  @@map("support_groups")
+}
+
+model SupportGroupMember {
+  id                String            @id @default(cuid())
+  groupId           String
+  userId            String
+  role              GroupRole         @default(MEMBER)
+  joinedAt          DateTime          @default(now())
+  isApproved        Boolean           @default(true) // for private groups
+  isActive          Boolean           @default(true)
+  leftAt            DateTime?
+  metadata          Json?             // member-specific data
+
+  // Relations
+  group             SupportGroup      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@map("support_group_members")
+}
+
+model GroupSession {
+  id                String            @id @default(cuid())
+  groupId           String
+  hostId            String
+  title             String
+  description       String?
+  scheduledFor      DateTime
+  duration          Int               // minutes
+  maxParticipants   Int               @default(10)
+  currentParticipants Int             @default(0)
+  status            GroupSessionStatus @default(SCHEDULED)
+  meetingLink       String?
+  isRecurring       Boolean           @default(false)
+  recurringPattern  String?           // weekly, biweekly, monthly
+  metadata          Json?             // session-specific data
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  // Relations
+  group             SupportGroup      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  host              User              @relation("GroupSessions", fields: [hostId], references: [id], onDelete: Cascade)
+  participants      GroupSessionParticipant[]
+
+  @@map("group_sessions")
+}
+
+model GroupSessionParticipant {
+  id                String            @id @default(cuid())
+  sessionId         String
+  userId            String
+  joinedAt          DateTime          @default(now())
+  leftAt            DateTime?
+  role              ParticipantRole   @default(ATTENDEE)
+  metadata          Json?             // participation data
+
+  // Relations
+  session           GroupSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user              User              @relation("GroupSessionParticipants", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId])
+  @@map("group_session_participants")
+}
+
+model SharedExperience {
+  id                String            @id @default(cuid())
+  title             String
+  content           String
+  category          ExperienceCategory
+  isAnonymous       Boolean           @default(true)
+  authorId          String
+  mood              String?           // before/after mood
+  tags              String?           // comma-separated tags
+  viewCount         Int               @default(0)
+  likeCount         Int               @default(0)
+  commentCount      Int               @default(0)
+  isPublic          Boolean           @default(true)
+  isFeatured        Boolean           @default(false)
+  metadata          Json?             // experience data
+  isDeleted         Boolean           @default(false)
+  deletedAt         DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  // Relations
+  author            User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  reactions         ExperienceReaction[]
+  comments          ExperienceComment[]
+
+  @@map("shared_experiences")
+}
+
+model ExperienceReaction {
+  id                String            @id @default(cuid())
+  experienceId      String
+  userId            String
+  reactionType      ReactionType
+  createdAt         DateTime          @default(now())
+
+  // Relations
+  experience        SharedExperience  @relation(fields: [experienceId], references: [id], onDelete: Cascade)
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([experienceId, userId, reactionType])
+  @@map("experience_reactions")
+}
+
+model ExperienceComment {
+  id                String            @id @default(cuid())
+  experienceId      String
+  authorId          String
+  content           String
+  isAnonymous       Boolean           @default(true)
+  parentCommentId   String?           // for nested comments
+  likeCount         Int               @default(0)
+  isDeleted         Boolean           @default(false)
+  deletedAt         DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  // Relations
+  experience        SharedExperience  @relation(fields: [experienceId], references: [id], onDelete: Cascade)
+  author            User              @relation("ExperienceComments", fields: [authorId], references: [id], onDelete: Cascade)
+  parentComment     ExperienceComment? @relation("ExperienceCommentReplies", fields: [parentCommentId], references: [id])
+  childComments     ExperienceComment[] @relation("ExperienceCommentReplies")
+
+  @@map("experience_comments")
+}
+
+enum ForumCategory {
+  GENERAL
+  ANXIETY
+  DEPRESSION
+  RELATIONSHIPS
+  TRAUMA
+  RECOVERY
+  SELF_CARE
+  MINDFULNESS
+  MEDICATION
+  THERAPY
+  SUCCESS_STORIES
+  COPING_STRATEGIES
+}
+
+enum GroupRole {
+  ADMIN
+  MODERATOR
+  MEMBER
+}
+
+enum GroupSessionStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ParticipantRole {
+  HOST
+  CO_HOST
+  ATTENDEE
+}
+
+enum ExperienceCategory {
+  PERSONAL_GROWTH
+  RECOVERY_JOURNEY
+  COPING_STRATEGY
+  SUCCESS_STORY
+  CHALLENGE
+  INSIGHT
+  MILESTONE
+  SETBACK
+  BREAKTHROUGH
+  DAILY_REFLECTION
+}
+
+enum ReactionType {
+  SUPPORTIVE
+  INSPIRED
+  RELATABLE
+  GRATEFUL
+  HOPEFUL
+  PROUD
+  EMPATHETIC
 }
